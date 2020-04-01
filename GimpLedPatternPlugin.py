@@ -41,8 +41,8 @@ def generate_led_pattern(ledType, newimg,
 				
 				pixelColor = {
 					KEY_COLOR_RED: pixel[0], 
-					KEY_COLOR_BLUE: pixel[1], 
-					KEY_COLOR_GREEN: pixel[2], 
+					KEY_COLOR_GREEN: pixel[1], 
+					KEY_COLOR_BLUE: pixel[2], 
 					KEY_COLOR_ALPHA: ledAlpha
 					}
 					
@@ -60,7 +60,8 @@ def generate_led_pattern(ledType, newimg,
 	outLedPattern = {
 		KEY_PATTERN_ID: constPattern,
 		KEY_PATTERN_DELAY: frameDelay,
-		KEY_PATTERN_FRAMES: ledFrames
+		KEY_PATTERN_FRAMES: ledFrames,
+		KEY_PATTERN_TOTAL_LEDS: (newimg.width*newimg.height)
 	}
 	
 	
@@ -93,6 +94,8 @@ KEY_FRAME_ID = "frameId"
 # top-to-bottom, left-to-right order (the same as the reading direction
 # of multi-line English text)
 KEY_FRAME_PIXEL_COLORS = "pixels"
+# Total number of LEDs. Total = Width*Height
+KEY_PATTERN_TOTAL_LEDS = "totalLeds"
 # Color keys, stored in a range between 0-255
 KEY_COLOR_RED = "R"
 KEY_COLOR_GREEN = "G"
@@ -103,22 +106,26 @@ KEY_COLOR_ALPHA = "A"
 '''	
 
 '''
-TODO Move to Adafruit Code Generator
+Adafruit Code Generator
 '''
-
 class AdafruitNeoPixelStripCodeGenerator: 
 	
 	# File to which to write the generated code to. 
 	mOutFile = None
 	mLedPattern = None
+	mOutDir = None
 	
 	LIMIT_LINE_LENTH = 10
 	LIMIT_LINE_BREAK = 9
 	
 	def __init__(self, ledPattern, outFileName, outDir):
-		outFilename = os.path.join(outDir, '{0}_Pattern.h'.format(outFileName))
+		#outFilename = os.path.join(outDir, '{0}_Pattern.h'.format(outFileName))
+		outFilename = os.path.join(outDir, '{0}.h'.format(self.getGeneratedLedPatternClassName(ledPattern[KEY_PATTERN_ID])))
+		self.mOutDir = outDir
 		self.mOutFile = open(outFilename, "w")
 		self.mLedPattern = ledPattern
+		
+		
 		pass
 		
 	def generate(self):
@@ -126,11 +133,19 @@ class AdafruitNeoPixelStripCodeGenerator:
 		patternId = self.mLedPattern[KEY_PATTERN_ID]
 		self.writeHeaders(patternId, self.mOutFile)
 		
-		# TODO For each LED Frame Generate constant
+		# Include delay
+		patternDelay = self.mLedPattern[KEY_PATTERN_DELAY]
+		self.mOutFile.write("\n#define {0} {1}\n".format(self.getDelayDefineId(patternId), int(patternDelay)))
+		
+		# Include total LEDs
+		patternLEDsTotal = self.mLedPattern[KEY_PATTERN_TOTAL_LEDS]
+		self.mOutFile.write("\n#define {0} {1}\n".format(self.getTotalLedsDefineId(patternId), int(patternLEDsTotal)))
+		
+		# For each LED Frame Generate constant
 		ledFrames = self.mLedPattern[KEY_PATTERN_FRAMES]
 		
 		for frame in ledFrames:
-			# TODO Write Frame const start
+			# Write Frame const start
 			frameId = frame[KEY_FRAME_ID]
 			self.writeFrameConst(frameId, self.mOutFile)
 			
@@ -145,7 +160,7 @@ class AdafruitNeoPixelStripCodeGenerator:
 				G = "%02x" %self.dimColorByRatio(color[KEY_COLOR_GREEN], colorRatio)
 				B = "%02x" %self.dimColorByRatio(color[KEY_COLOR_BLUE], colorRatio)
 				
-				# TODO Move this into code generator which will consume the LED Pattern JSON
+				# Move this into code generator which will consume the LED Pattern JSON
 				if pixelIndex < lastPixel:
 					self.mOutFile.write('0x{0}{1}{2}, '.format(R,G,B))
 				else: 
@@ -157,22 +172,34 @@ class AdafruitNeoPixelStripCodeGenerator:
 					self.mOutFile.write("\n")
 				
 				pixelIndex = pixelIndex + 1
-			# TODO Write Frame const end 
+			# Write Frame const end 
 			self.mOutFile.write("};\n")
 			
 			pass
 			
-		# TODO Generate LED Pattern constant.
+		# Generate LED Pattern constant.
 		self.writePatternConst(patternId, self.mOutFile)
 		for frame in ledFrames:
 			self.mOutFile.write("{0},\n".format(frame[KEY_FRAME_ID]))
 		pass
 		self.mOutFile.write("};\n")
-	
+		
+		# Write the function that will be exposed 
+		# to the main Arduino sketch to run the led pattern.
+		#self.writePlayFunction(patternId, self.mOutFile)
+		self.writePatternClass(patternId, self.mOutFile)
 		
 		# Write Footer
 		self.writeFooters(patternId, self.mOutFile)
 		
+		self.mOutFile.write("\n")
+		
+		self.mOutFile.close()
+		
+		# Write Base Pattern class 
+		self.writeBaseLedPatternClass()
+		
+		# TODO Generate ReadMe file with simple instructions on how to include in existing script.
 		pass
 
 	# Dims a color by a given ratio. Because we are creating LED 
@@ -181,7 +208,19 @@ class AdafruitNeoPixelStripCodeGenerator:
 	def dimColorByRatio(self, color, ratio):
 		outColor = int(color * ratio)
 		return outColor
-
+	
+	# Generates the ID that will be used in the Total LEDs define statement
+	def getTotalLedsDefineId(self, patternId):
+		return "{0}_TOTAL_LEDS".format(patternId)
+		
+	# Generates the ID that will be used in the Delay define statement
+	def getDelayDefineId(self, patternId):
+		return "{0}_DELAY".format(patternId)
+		
+	def toCamelCase(self, text):
+		text = text.title()
+		return text[0].lower() + text[1:]
+		
 	# Helper to write the start of a frame to the Arduino file.
 	def writeFrameConst(self, frameName, outFile):
 		outFile.write("\nconst long {0}[] PROGMEM = {{ \n".format(frameName))
@@ -199,6 +238,9 @@ class AdafruitNeoPixelStripCodeGenerator:
 		#outFile.write("\n#ifndef PGMSPACE_H\n")
 		#outFile.write("#define PGMSPACE_H\n")
 		outFile.write("#include <avr/pgmspace.h>\n")
+		outFile.write("#include <Adafruit_NeoPixel.h>\n")
+		#Include Base Pattern class
+		outFile.write('#include "{0}.h"\n'.format(self.getBasePatternClassName()))
 		#outFile.write("#endif //PGMSPACE_H\n")
 
 
@@ -206,8 +248,121 @@ class AdafruitNeoPixelStripCodeGenerator:
 	def writeFooters(self, patternName, outFile):
 		outFile.write("\n#endif //{0}_H\n".format(patternName))
 
-
+	def writePlayFunction(self, patternId, outFile):
+		outFile.write("""
+/**
+ * Call this with the NeoPixel strip on which the pattern 
+ * will be displayed.
+ */ 
+void play_{3}(Adafruit_NeoPixel strip) 
+{{
+  int totalFrames = sizeof({0})/sizeof(long*);
+  for (int framePos = 0; framePos < totalFrames; framePos ++) 
+  {{
+    for (int ledPos =0; ledPos < {1}; ledPos++)
+    {{
+      unsigned long ledColor = pgm_read_word(&({0}[framePos][ledPos]));
+      int blue = ledColor & 0x00FF;
+      int green = (ledColor >> 8);
+      int red = (ledColor >>  16);
+      strip.setPixelColor(ledPos, red, green, blue);
+      
+    }}
+    strip.show();
+    delay({2});
+  }}
+}}
+""".format(patternId, self.getTotalLedsDefineId(patternId), self.getDelayDefineId(patternId), self.toCamelCase(patternId)))
 	
+	# Writes the base class used by all LED pattern in a seprate class. 
+	# This would ideally be released as an independent Lib later on. 
+	# But for now generating it so the output is self-contained. 
+	def writeBaseLedPatternClass(self):
+		outFilename = os.path.join(self.mOutDir, '{0}.h'.format(self.getBasePatternClassName()))
+		baseClassFile = open(outFilename, "w")
+		baseClassFile.write(
+		"""#ifndef GIMP_LED_PATTERN_H
+#define GIMP_LED_PATTERN_H
+#include <Adafruit_NeoPixel.h>
+
+class GimpLedPattern
+{
+  public:
+    GimpLedPattern(Adafruit_NeoPixel& strip): mStrip(strip) {}
+    ~GimpLedPattern(){}
+    
+    virtual void playPattern() = 0 ;
+    virtual void stopPattern() = 0;
+
+  protected:
+    Adafruit_NeoPixel& mStrip;
+    bool mInterrupt = false;
+};
+
+#endif
+		""")
+		baseClassFile.close()
+		
+	# Returns the class name for the base LED Pattern class	
+	def getBasePatternClassName(self):
+		return "GimpLedPattern"
+	
+	# Returns the name of the class generated for this pattern. 
+	def getGeneratedLedPatternClassName(self, patternId):
+		return "Pattern_{0}".format(patternId)
+		
+	# Writes the class for this LED Pattern
+	def writePatternClass(self, patternId, outFile):
+		outFile.write("""
+class {4} : public GimpLedPattern 
+{{
+
+  public:
+    {4}(Adafruit_NeoPixel& strip): {3}(strip){{}}
+
+    ~Pattern_{0}(){{}}
+
+    void playPattern() 
+    {{
+      int totalFrames = sizeof({0}) / sizeof(long*);
+      for (int framePos = 0; framePos < totalFrames; framePos ++)
+      {{
+        for (int ledPos = 0; ledPos < {1}; ledPos++)
+        {{
+          if(mInterrupt)
+          {{
+            // If we are interrupted stop the pattern. "Clean" LED pattern.
+            mStrip.clear();
+            mStrip.show();
+            mInterrupt = true;
+            return;
+          }}
+          unsigned long ledColor = pgm_read_word(&({0}[framePos][ledPos]));
+          int blue = ledColor & 0x00FF;
+          int green = (ledColor >> 8);
+          int red = (ledColor >>  16);
+          mStrip.setPixelColor(ledPos, red, green, blue);
+
+        }}
+        mStrip.show();
+        delay({2});
+      }}
+    }}
+
+    
+    void stopPattern() 
+    {{
+      mInterrupt = true;
+    }}
+}};
+		""".format(patternId, 
+		self.getTotalLedsDefineId(patternId), 
+		self.getDelayDefineId(patternId), 
+		self.getBasePatternClassName(), 
+		self.getGeneratedLedPatternClassName(patternId))
+		)
+		
+		
 register(
     "python_fu_code_minion_led_pattern_generator",
     "Generates LED pattern from Image",
@@ -221,6 +376,7 @@ register(
         (PF_OPTION, "ledType", "LED Type", 0, ("Adafruit NeoPixel", "Coming Soon...")),
         (PF_IMAGE, "image", "Input image", None),
         (PF_SPINNER, "frameDelay", "Frame Delay (ms)", 200, (1, 80000, 1)),
+		# TODO Remove, not needed/used.
 		(PF_FILE, "imagefile", "Image file", ""),
         (PF_DIRNAME, "dir", "Directory", "/tmp")
 
