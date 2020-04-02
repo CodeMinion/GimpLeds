@@ -67,9 +67,13 @@ def generate_led_pattern(ledType, newimg,
 		KEY_PATTERN_TOTAL_LEDS: (newimg.width*newimg.height)
 	}
 	
-	
-	ledCodeGenerator = AdafruitNeoPixelStripCodeGenerator(outLedPattern, filename, dir)
-	ledCodeGenerator.generate()
+
+	if ledType == CHOICE_ADAFRUIT_NEOPIXEL_ARDUINO:
+		# Generate Code for Arduino and Adafruit Neo Pixel.
+		ledCodeGenerator = AdafruitNeoPixelStripCodeGenerator(outLedPattern, filename, dir)
+		ledCodeGenerator.generate()
+		pass
+		
 		
 	return
 
@@ -77,9 +81,14 @@ def generate_led_pattern(ledType, newimg,
 def nameToConst(name):
 	outName = name.upper().replace(" ", "_").replace("#","")
 	return outName
-
 '''
- JSON Intermediate generation section
+Code Generation Choices
+'''
+CHOICE_ADAFRUIT_NEOPIXEL_ARDUINO = 0
+CHOICE_RESERVED = 1
+	
+'''
+ Intermediate generation section
 '''
 # ID of the Entire Pattern.
 KEY_PATTERN_ID = "patternId"
