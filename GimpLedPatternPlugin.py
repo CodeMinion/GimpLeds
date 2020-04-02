@@ -3,6 +3,7 @@
 
 import os
 from gimpfu import *
+import time
 
 def generate_led_pattern(ledType, newimg, 
                frameDelay, rowOrderType, dir):
@@ -77,14 +78,17 @@ def generate_led_pattern(ledType, newimg,
 		KEY_PATTERN_TOTAL_LEDS: (newimg.width*newimg.height)
 	}
 	
-
+	pdb.gimp_progress_pulse()
+	pdb.gimp_progress_set_text("Generating code...")
 	if ledType == CHOICE_ADAFRUIT_NEOPIXEL_ARDUINO:
 		# Generate Code for Arduino and Adafruit Neo Pixel.
 		ledCodeGenerator = AdafruitNeoPixelStripCodeGenerator(outLedPattern, filename, dir)
 		ledCodeGenerator.generate()
 		pass
-		
-		
+	pdb.gimp_progress_update(1.0)
+	pdb.gimp_progress_set_text("Generation Done!")
+	pdb.gimp_progress_end()
+	
 	return
 
 	
@@ -462,6 +466,10 @@ class {4} : public GimpLedPattern
 		outFilename = os.path.join(self.mOutDir, 'ReadMe_{0}.txt'.format(self.getGeneratedLedPatternClassName(patternId)))
 		readMeFile = open(outFilename, "w")
 		readMeFile.write("""
+
+// Note: These steps assume you used the sketh directory as the destination directory when creating the pattern. 
+// If you selected a different directory then simply copy the generated files over and into the sketch directory. 
+
 // 1 - Include at the top of Arduino sketch under your other #include statements.
 #include "{0}.h"
 
@@ -522,7 +530,7 @@ Directory: Directory where the code will be placed once generation is complete. 
         (PF_SPINNER, "frameDelay", "Frame Delay (ms)", 200, (1, 80000, 1)),
 		(PF_OPTION, "rowOrderType", "Row Ordering", 0, ("Standard", "Flip Odd", "Flip Even")),
         
-		(PF_DIRNAME, "dir", "Directory", "/tmp")
+		(PF_DIRNAME, "dir", "Directory", os.getcwd())
 
 		# Python-Fu Type, paramter-name, ui-text, default
     ],
