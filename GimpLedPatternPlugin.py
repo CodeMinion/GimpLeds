@@ -5,7 +5,7 @@ import os
 from gimpfu import *
 
 def generate_led_pattern(ledType, newimg, 
-               frameDelay, imagefile, dir):
+               frameDelay, dir):
     
 	
 	filename, file_extension = os.path.splitext(newimg.name)
@@ -55,7 +55,10 @@ def generate_led_pattern(ledType, newimg,
 			KEY_FRAME_PIXEL_COLORS: pixelColors
 		}
 		ledFrames.append(ledFrame)
-		
+	
+	
+	#Layers are listed from the top most down, for the frames we want to start at the bottom.
+	ledFrames.reverse() 
 	# Build LEd Pattern
 	outLedPattern = {
 		KEY_PATTERN_ID: constPattern,
@@ -72,7 +75,7 @@ def generate_led_pattern(ledType, newimg,
 
 	
 def nameToConst(name):
-	outName = name.upper().replace(" ", "_")
+	outName = name.upper().replace(" ", "_").replace("#","")
 	return outName
 
 '''
@@ -139,10 +142,13 @@ class AdafruitNeoPixelStripCodeGenerator:
 		
 		# Include total LEDs
 		patternLEDsTotal = self.mLedPattern[KEY_PATTERN_TOTAL_LEDS]
-		self.mOutFile.write("\n#define {0} {1}\n".format(self.getTotalLedsDefineId(patternId), int(patternLEDsTotal)))
+		self.mOutFile.write("\n#define {0} {1}\n\n".format(self.getTotalLedsDefineId(patternId), int(patternLEDsTotal)))
 		
 		# For each LED Frame Generate constant
 		ledFrames = self.mLedPattern[KEY_PATTERN_FRAMES]
+		
+		# Wrap const declarations in namespace to prevent duplicate conflicts
+		self.writeNamespaceStart(patternId, self.mOutFile)
 		
 		for frame in ledFrames:
 			# Write Frame const start
@@ -169,20 +175,23 @@ class AdafruitNeoPixelStripCodeGenerator:
 				
 				# Add a new line after 10 patterns to keep the width of the code slim
 				if pixelIndex % self.LIMIT_LINE_LENTH == self.LIMIT_LINE_BREAK:
-					self.mOutFile.write("\n")
+					self.mOutFile.write("\n	")
 				
 				pixelIndex = pixelIndex + 1
 			# Write Frame const end 
-			self.mOutFile.write("};\n")
+			self.mOutFile.write("	};\n")
 			
 			pass
 			
 		# Generate LED Pattern constant.
 		self.writePatternConst(patternId, self.mOutFile)
 		for frame in ledFrames:
-			self.mOutFile.write("{0},\n".format(frame[KEY_FRAME_ID]))
+			self.mOutFile.write("	{0},\n".format(frame[KEY_FRAME_ID]))
 		pass
-		self.mOutFile.write("};\n")
+		self.mOutFile.write("	};\n")
+		
+		# End namespace declarations
+		self.writeNamespaceEnd(patternId, self.mOutFile)
 		
 		# Write the function that will be exposed 
 		# to the main Arduino sketch to run the led pattern.
@@ -223,12 +232,12 @@ class AdafruitNeoPixelStripCodeGenerator:
 		
 	# Helper to write the start of a frame to the Arduino file.
 	def writeFrameConst(self, frameName, outFile):
-		outFile.write("\nconst long {0}[] PROGMEM = {{ \n".format(frameName))
+		outFile.write("\n	const uint32_t {0}[] PROGMEM = {{ \n	".format(frameName))
 
 	# Helper to write the start of a pattern to the Arduino file.
 	# A Pattern is composed of Frames.
 	def writePatternConst(self, patternName, outFile):
-		outFile.write("\nconst long *const {0}[] PROGMEM = {{ \n".format(patternName))
+		outFile.write("\n	const uint32_t *const {0}[] PROGMEM = {{ \n".format(patternName))
 
 	# Helper to write any headers needed	
 	def writeHeaders(self, patternName, outFile):
@@ -243,6 +252,25 @@ class AdafruitNeoPixelStripCodeGenerator:
 		outFile.write('#include "{0}.h"\n'.format(self.getBasePatternClassName()))
 		#outFile.write("#endif //PGMSPACE_H\n")
 
+		
+	# Namespaces used to prevent conflicts in cases where two patterns 
+	# are generated from layers with the same name.
+	def writeNamespaceStart(self, patternId, outFile):
+		outFile.write("namespace {0} {{\n".format(self.getNamespaceName(patternId)))
+		pass
+		
+	def writeNamespaceEnd(self, patternId, outFile):
+		outFile.write("""
+}}
+
+using namespace {0};
+
+		""".format(self.getNamespaceName(patternId)))
+		pass
+		
+	def getNamespaceName(self, patternId):
+		return "NS_{0}".format(patternId)
+		pass
 
 	#Helper to write any footers needed.
 	def writeFooters(self, patternName, outFile):
@@ -324,7 +352,7 @@ class {4} : public GimpLedPattern
 
     void playPattern() 
     {{
-      int totalFrames = sizeof({0}) / sizeof(long*);
+      int totalFrames = sizeof({0}) / sizeof(uint32_t*);
       for (int framePos = 0; framePos < totalFrames; framePos ++)
       {{
         for (int ledPos = 0; ledPos < {1}; ledPos++)
@@ -334,13 +362,13 @@ class {4} : public GimpLedPattern
             // If we are interrupted stop the pattern. "Clean" LED pattern.
             mStrip.clear();
             mStrip.show();
-            mInterrupt = true;
+            mInterrupt = false;
             return;
           }}
-          unsigned long ledColor = pgm_read_word(&({0}[framePos][ledPos]));
+          uint32_t ledColor = pgm_read_dword(&({0}[framePos][ledPos]));
           int blue = ledColor & 0x00FF;
-          int green = (ledColor >> 8);
-          int red = (ledColor >>  16);
+          int green = (ledColor >> 8) & 0x00FF;
+          int red = (ledColor >>  16) & 0x00FF;
           mStrip.setPixelColor(ledPos, red, green, blue);
 
         }}
@@ -377,7 +405,7 @@ register(
         (PF_IMAGE, "image", "Input image", None),
         (PF_SPINNER, "frameDelay", "Frame Delay (ms)", 200, (1, 80000, 1)),
 		# TODO Remove, not needed/used.
-		(PF_FILE, "imagefile", "Image file", ""),
+		#(PF_FILE, "imagefile", "Image file", ""),
         (PF_DIRNAME, "dir", "Directory", "/tmp")
 
 		# Python-Fu Type, paramter-name, ui-text, default
