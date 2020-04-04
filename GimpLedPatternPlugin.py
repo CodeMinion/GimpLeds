@@ -35,10 +35,12 @@ def generate_led_pattern(ledType, newimg,
 		lastLed = (layer.height * layer.width) - 1 
 		ledIndex = 0
 		
+		layerWidth = layer.width
+		layerHeight = layer.height
 		pixelColors = []
 		# Get the pixels in the layer
-		for y in range(0, layer.height):
-			for x in range(0, layer.width):
+		for y in range(0, layerHeight):
+			for x in range(0, layerWidth):
 				num_channels, pixel = pdb.gimp_drawable_get_pixel(layer, x, y)
 				
 				ledAlpha = 255
@@ -63,7 +65,10 @@ def generate_led_pattern(ledType, newimg,
 		# Track pattern.
 		ledFrame = {
 			KEY_FRAME_ID: constLayer,
-			KEY_FRAME_PIXEL_COLORS: pixelColors
+			KEY_FRAME_PIXEL_COLORS: pixelColors,
+			KEY_FRAME_WIDTH: layerWidth,
+			KEY_FRAME_HEIGHT: layerHeight,
+			KEY_FRAME_TOTAL_LEDS: (layerWidth*layerHeight)
 		}
 		ledFrames.append(ledFrame)
 	
@@ -167,6 +172,12 @@ KEY_FRAME_ID = "frameId"
 # top-to-bottom, left-to-right order (the same as the reading direction
 # of multi-line English text)
 KEY_FRAME_PIXEL_COLORS = "pixels"
+# Number of pixels wide of the panel. (Layers can have sizes different from the image itself)
+KEY_FRAME_WIDTH = "width"
+# Number of pixels height of the panel. 
+KEY_FRAME_HEIGHT = "height"
+# Total number of pixels/LEDs in the frame
+KEY_FRAME_TOTAL_LEDS = "totalLeds"
 # Total number of LEDs. Total = Width*Height
 KEY_PATTERN_TOTAL_LEDS = "totalLeds"
 # Color keys, stored in a range between 0-255
@@ -260,6 +271,14 @@ class AdafruitNeoPixelStripCodeGenerator:
 		pass
 		self.mOutFile.write("	};\n")
 		
+		# Generate LED Pattern Size 
+		self.writePatternFrameSizeConst(patternId, self.mOutFile)
+		for frame in ledFrames:
+			self.mOutFile.write("	{0},\n".format(frame[KEY_FRAME_TOTAL_LEDS]))
+		pass
+		self.mOutFile.write("	};\n")
+		
+		
 		# End namespace declarations
 		self.writeNamespaceEnd(patternId, self.mOutFile)
 		
@@ -292,10 +311,14 @@ class AdafruitNeoPixelStripCodeGenerator:
 	# Generates the ID that will be used in the Total LEDs define statement
 	def getTotalLedsDefineId(self, patternId):
 		return "{0}_TOTAL_LEDS".format(patternId)
-		
+			
 	# Generates the ID that will be used in the Delay define statement
 	def getDelayDefineId(self, patternId):
 		return "{0}_DELAY".format(patternId)
+	
+	# Generates the ID of the constant to use for the pattern frame sizes. 
+	def getPatternSizeConstId(self, patternId):
+		return "{0}_SIZES".format(patternId)
 		
 	def toCamelCase(self, text):
 		text = text.title()
@@ -309,7 +332,13 @@ class AdafruitNeoPixelStripCodeGenerator:
 	# A Pattern is composed of Frames.
 	def writePatternConst(self, patternName, outFile):
 		outFile.write("\n	const uint32_t *const {0}[] PROGMEM = {{ \n".format(patternName))
-
+		
+	# Helper to write the start of the pattern's frame size array
+	# A Pattern Size is composed of each Frame's size listed in the same order as the frame constants.
+	def writePatternFrameSizeConst(self, patternName, outFile):
+		outFile.write("\n	const uint32_t {0}[] PROGMEM = {{ \n".format(self.getPatternSizeConstId(patternName)))
+		
+	
 	# Helper to write any headers needed	
 	def writeHeaders(self, patternName, outFile):
 		outFile.write("#ifndef {0}_H\n".format(patternName))
@@ -426,7 +455,8 @@ class {4} : public GimpLedPattern
       int totalFrames = sizeof({0}) / sizeof(uint32_t*);
       for (int framePos = 0; framePos < totalFrames; framePos ++)
       {{
-        for (int ledPos = 0; ledPos < {1}; ledPos++)
+        int frameTotalLeds = pgm_read_dword(&({1}[framePos]));
+        for (int ledPos = 0; ledPos < frameTotalLeds; ledPos++)
         {{
           if(mInterrupt)
           {{
@@ -455,7 +485,7 @@ class {4} : public GimpLedPattern
     }}
 }};
 		""".format(patternId, 
-		self.getTotalLedsDefineId(patternId), 
+		self.getPatternSizeConstId(patternId),
 		self.getDelayDefineId(patternId), 
 		self.getBasePatternClassName(), 
 		self.getGeneratedLedPatternClassName(patternId))
