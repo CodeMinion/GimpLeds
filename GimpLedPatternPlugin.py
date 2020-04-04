@@ -5,8 +5,16 @@ import os
 from gimpfu import *
 import time
 
+'''
+Generates LED code from the pixel information in an image. 
+@param ledType - Type of LED (Adafruit NeoPixel).
+@param newimg - Image to process.
+@param frameDelay - Delay in milliseconds of a frame.
+@param rowOrderType - How to handle the given row. Mainly used to handle unique setup of LED strips. Standard, Flip Odd, Flip Even
+@param ledLayout - Layout of the LED (Strip, Single Matrix, Tiled Matrix)
+'''
 def generate_led_pattern(ledType, newimg, 
-               frameDelay, rowOrderType, dir):
+               frameDelay, rowOrderType, ledLayout, dir):
     
 	# TODO Consider allowing user to specify pattern name instead of using the file name.
 	filename, file_extension = os.path.splitext(newimg.name)
@@ -47,10 +55,10 @@ def generate_led_pattern(ledType, newimg,
 			for x in range(0, layerWidth):
 				num_channels, pixel = pdb.gimp_drawable_get_pixel(layer, x, y)
 				
-				ledAlpha = 255
+				ledAlpha = int(255 * layer.opacity)
 				# If it has 4 channels then we have alpha in the end. 
 				if num_channels == 4:
-					ledAlpha = pixel[3]
+					ledAlpha = int(pixel[3]* layer.opacity)
 				
 				pixelColor = {
 					KEY_COLOR_RED: pixel[0], 
@@ -66,8 +74,8 @@ def generate_led_pattern(ledType, newimg,
 			# Process pixel colors here after the row is processed because the ordering works on a row level. 
 			rowPixels = processPixelRow(rowPixels, rowOrderType, y)
 			pixelColors.extend(rowPixels)
-			
-		# TODO Depending on the row ordering flip this list. 	
+		
+		# TODO Track layer offsets. 	
 		# Track pattern.
 		ledFrame = {
 			KEY_FRAME_ID: constLayer,
@@ -80,13 +88,26 @@ def generate_led_pattern(ledType, newimg,
 	
 	
 	#Layers are listed from the top most down, for the frames we want to start at the bottom.
-	ledFrames.reverse() 
+	#ledFrames.reverse() 
+	
+	# Get the layout type
+	layoutTypeTag = LAYOUT_STRIP
+	
+	if ledLayout == LAYOUT_CHOICE_SINGLE_MATRIX:
+		layoutTypeTag = LAYOUT_SINGLE_MATRIX
+	elif ledLayout == LAYOUT_CHOICE_TILED_MATRIX:
+		layoutTypeTag = LAYOUT_TILED_MATRIX
+	
+
 	# Build LEd Pattern
 	outLedPattern = {
 		KEY_PATTERN_ID: constPattern,
 		KEY_PATTERN_DELAY: frameDelay,
 		KEY_PATTERN_FRAMES: ledFrames,
-		KEY_PATTERN_TOTAL_LEDS: (newimg.width*newimg.height)
+		KEY_PATTERN_WIDTH: newimg.width,
+		KEY_PATTERN_HEIGHT: newimg.height,
+		KEY_PATTERN_TOTAL_LEDS: (newimg.width*newimg.height),
+		KEY_PATTERN_LAYOUT: layoutTypeTag
 	}
 	
 	pdb.gimp_progress_pulse()
@@ -104,7 +125,7 @@ def generate_led_pattern(ledType, newimg,
 
 	
 def nameToConst(name):
-	outName = name.upper().replace(" ", "_").replace("#","")
+	outName = name.upper().replace(" ", "_").replace("#","").replace("/","_")
 	return outName
 
 # Groups are layers composed of layser, so this will flatten 
@@ -144,6 +165,14 @@ def processPixelRow(pixelList, rowOrder, rowPosition):
 		outPixelList = pixelList
 		
 	return outPixelList	
+	
+''' 
+LED Layout Options 
+'''	
+LAYOUT_CHOICE_STRIP = 0
+LAYOUT_CHOICE_SINGLE_MATRIX = 1
+LAYOUT_CHOICE_TILED_MATRIX = 2
+
 '''
 Row Processing Options
 '''
@@ -169,6 +198,14 @@ KEY_PATTERN_FRAMES = "patternFrames"
 # Delay in milliseconds of the LED pattern. 
 # This will be the duration a given frame is displayed for.
 KEY_PATTERN_DELAY = "delay"
+# Width of the entire pattern, this is the canvas/image height in GIMP
+KEY_PATTERN_WIDTH = "width"
+# Height of the entire pattern, this is the canvas/image height in GIMP
+KEY_PATTERN_HEIGHT = "height"
+# Total number of LEDs. Total = Width*Height
+KEY_PATTERN_TOTAL_LEDS = "totalLeds"
+# Specify the LED layout of this pattern. Types: LED Strip, LED Single Matrix, LED Tiled Matrix
+KEY_PATTERN_LAYOUT = "patternLayout"
 # ID of the frame. Used mostly internally. 
 KEY_FRAME_ID = "frameId"
 # Color of each individual LED/Pixel during this frame. 
@@ -184,13 +221,17 @@ KEY_FRAME_WIDTH = "width"
 KEY_FRAME_HEIGHT = "height"
 # Total number of pixels/LEDs in the frame
 KEY_FRAME_TOTAL_LEDS = "totalLeds"
-# Total number of LEDs. Total = Width*Height
-KEY_PATTERN_TOTAL_LEDS = "totalLeds"
 # Color keys, stored in a range between 0-255
 KEY_COLOR_RED = "R"
 KEY_COLOR_GREEN = "G"
 KEY_COLOR_BLUE = "B"
 KEY_COLOR_ALPHA = "A"
+
+# Types of LAYOUTS
+LAYOUT_STRIP = "led_strip"
+LAYOUT_SINGLE_MATRIX = "led_single_matrix"
+LAYOUT_TILED_MATRIX = "led_tiled_matrix"
+
 '''
 ----------------- END of JSON Intermediate generation section -----
 '''	
@@ -237,17 +278,22 @@ class AdafruitNeoPixelStripCodeGenerator:
 		# Wrap const declarations in namespace to prevent duplicate conflicts
 		self.writeNamespaceStart(patternId, self.mOutFile)
 		
+		# TODO Handle LED Layout Type
+		frameOffsets = []
+		currOffset = 0
 		for frame in ledFrames:
 			# Write Frame const start
 			frameId = frame[KEY_FRAME_ID]
 			self.writeFrameConst(frameId, self.mOutFile)
+			
+			frameOffsets.append(currOffset)
 			
 			pixelColors = frame[KEY_FRAME_PIXEL_COLORS]
 			pixelIndex = 0
 			lastPixel = len(pixelColors) - 1
 			for color in pixelColors:
 				# LEDs don't have alpha so we just reduce the color by the alpha ratio.
-				colorRatio = color[KEY_COLOR_ALPHA]/255.0
+				colorRatio = (color[KEY_COLOR_ALPHA]/255.0) / 100.0
 				
 				R = "%02x" %self.dimColorByRatio(color[KEY_COLOR_RED], colorRatio)
 				G = "%02x" %self.dimColorByRatio(color[KEY_COLOR_GREEN], colorRatio)
@@ -265,6 +311,10 @@ class AdafruitNeoPixelStripCodeGenerator:
 					self.mOutFile.write("\n	")
 				
 				pixelIndex = pixelIndex + 1
+			# Move offset forward by the amount of pixels/LEDs in this layer.
+			# TODO Properly calculate offset, possibly using layer offset. 
+			currOffset = frame[KEY_FRAME_WIDTH] * frame[KEY_FRAME_HEIGHT] + currOffset
+			
 			# Write Frame const end 
 			self.mOutFile.write("	};\n")
 			
@@ -284,6 +334,14 @@ class AdafruitNeoPixelStripCodeGenerator:
 		pass
 		self.mOutFile.write("	};\n")
 		
+		# TODO Generate offset for the layouts that need it. 
+		if self.isLayoutTiledMatrix():
+			self.writePatternFrameOffsetConst(patternId, self.mOutFile)
+			for offset in frameOffsets:
+				self.mOutFile.write("	{0},\n".format(offset))
+			pass
+			self.mOutFile.write("	};\n")
+				
 		
 		# End namespace declarations
 		self.writeNamespaceEnd(patternId, self.mOutFile)
@@ -325,6 +383,13 @@ class AdafruitNeoPixelStripCodeGenerator:
 	# Generates the ID of the constant to use for the pattern frame sizes. 
 	def getPatternSizeConstId(self, patternId):
 		return "{0}_SIZES".format(patternId)
+	
+	# Generates the ID that will be used for the offsets constant. 
+	def getFrameOffsetConstId(self, patternId):
+		return "{0}_OFFSETS".format(patternId)
+	
+	def isLayoutTiledMatrix(self):
+		return self.mLedPattern[KEY_PATTERN_LAYOUT] == LAYOUT_TILED_MATRIX
 		
 	def toCamelCase(self, text):
 		text = text.title()
@@ -343,6 +408,11 @@ class AdafruitNeoPixelStripCodeGenerator:
 	# A Pattern Size is composed of each Frame's size listed in the same order as the frame constants.
 	def writePatternFrameSizeConst(self, patternName, outFile):
 		outFile.write("\n	const uint32_t {0}[] PROGMEM = {{ \n".format(self.getPatternSizeConstId(patternName)))
+	
+	# Helper to write the start of frame's offset array. 
+	# The frame offset array includes the offset to be applied to the frame's LED positions.
+	def writePatternFrameOffsetConst(self, patternName, outFile):
+		outFile.write("\n	const uint32_t {0}[] PROGMEM = {{ \n".format(self.getFrameOffsetConstId(patternName)))
 		
 	
 	# Helper to write any headers needed	
@@ -462,6 +532,7 @@ class {4} : public GimpLedPattern
       for (int framePos = 0; framePos < totalFrames; framePos ++)
       {{
         int frameTotalLeds = pgm_read_dword(&({1}[framePos]));
+		int ledOffset = 0;
         for (int ledPos = 0; ledPos < frameTotalLeds; ledPos++)
         {{
           if(mInterrupt)
@@ -476,7 +547,7 @@ class {4} : public GimpLedPattern
           int blue = ledColor & 0x00FF;
           int green = (ledColor >> 8) & 0x00FF;
           int red = (ledColor >>  16) & 0x00FF;
-          mStrip.setPixelColor(ledPos, red, green, blue);
+          mStrip.setPixelColor(ledPos + ledOffset, red, green, blue);
 
         }}
         mStrip.show();
@@ -503,7 +574,7 @@ class {4} : public GimpLedPattern
 		readMeFile = open(outFilename, "w")
 		readMeFile.write("""
 
-// Note: These steps assume you used the sketh directory as the destination directory when creating the pattern. 
+// Note: These steps assume you used the sketch directory as the destination directory when creating the pattern. 
 // If you selected a different directory then simply copy the generated files over and into the sketch directory. 
 
 // 1 - Include at the top of Arduino sketch under your other #include statements.
@@ -534,7 +605,8 @@ End: Adafruit Code Generator
 		
 register(
     "python_fu_code_minion_led_pattern_generator",
-    "Generates LED pattern from Image",
+    #"Python-Fu: LED Pattern Generator",
+	"Generates LED pattern from Image",
     """Uses the pixels in the current image to generate an LED pattern for Arduino. Layers will be used as frames in the pattern and only visible layers are used. Layer Groups are also supported and will be included in the final patten if visible. 
 	
 UI Fields Help
@@ -565,7 +637,7 @@ Directory: Directory where the code will be placed once generation is complete. 
         (PF_IMAGE, "image", "Input image", None),
         (PF_SPINNER, "frameDelay", "Frame Delay (ms)", 200, (1, 80000, 1)),
 		(PF_OPTION, "rowOrderType", "Row Ordering", 0, ("Standard", "Flip Odd", "Flip Even")),
-        
+        (PF_OPTION, "ledLayout", "Layout (TODO)", 0, ("Strip", "Single Matrix", "Tiled Matrix")),
 		(PF_DIRNAME, "dir", "Directory", os.getcwd())
 
 		# Python-Fu Type, paramter-name, ui-text, default
