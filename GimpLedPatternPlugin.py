@@ -35,11 +35,15 @@ def generate_led_pattern(ledType, newimg,
 		lastLed = (layer.height * layer.width) - 1 
 		ledIndex = 0
 		
+		# Tuple with of (x,y)
+		layerOffsets = layer.offsets
+		
 		layerWidth = layer.width
 		layerHeight = layer.height
 		pixelColors = []
 		# Get the pixels in the layer
 		for y in range(0, layerHeight):
+			rowPixels = [] 
 			for x in range(0, layerWidth):
 				num_channels, pixel = pdb.gimp_drawable_get_pixel(layer, x, y)
 				
@@ -54,13 +58,15 @@ def generate_led_pattern(ledType, newimg,
 					KEY_COLOR_BLUE: pixel[2], 
 					KEY_COLOR_ALPHA: ledAlpha
 					}
-					
+		
 				# Track LED
-				pixelColors.append(pixelColor)
+				rowPixels.append(pixelColor)
 		
-		# Perform any processing needed on the pixel row.
-		pixelColors = processPixelRow(pixelColors, rowOrderType, rowOrderType)
-		
+			# Perform any processing needed on the pixel row.
+			# Process pixel colors here after the row is processed because the ordering works on a row level. 
+			rowPixels = processPixelRow(rowPixels, rowOrderType, y)
+			pixelColors.extend(rowPixels)
+			
 		# TODO Depending on the row ordering flip this list. 	
 		# Track pattern.
 		ledFrame = {
@@ -126,7 +132,7 @@ def flatternGroups(parent):
 # Flip Odd - Reverses the pixels in the odd rows.
 # Flip Even - Reverses the pixels in the even rows.
 def processPixelRow(pixelList, rowOrder, rowPosition):
-	outPixelList = []
+	outPixelList = pixelList
 	if rowOrder == ROW_PROCESSING_STANDARD:
 		# Do nothing
 		outPixelList = pixelList
