@@ -65,11 +65,11 @@ The plug-in takes one image to represent a single LED pattern (or animation) and
 **Note:** The actual code generated is dependent on the code generator selected but this could should drive the LEDs on the target platform and expose a simple interface of **playPattern()**, **stopPattern()**.
 
 - **Adafruit NeoPixel generates the following:**
-    - **Pattern_<GimpImageFilename>.h:** Pattern class with all the information needed to execute the pattern on an Adafruit NeoPixel strip on Arduino. 
+    - **Pattern_(GimpImageFilename).h:** Pattern class with all the information needed to execute the pattern on an Adafruit NeoPixel strip on Arduino. 
   
     - **GimpLedPatern.h:** Abstract class to provide some consistency among all patterns generated. 
   
-    - **README_Pattern_<GimpeImageFilename>.txt:** Information text file with instructions on how to integrate the generated pattern into the final sketch. Follow these instructions and copy-paste the instructed lines where specified to be up and running in no time. 
+    - **README_Pattern_(GimpeImageFilename).txt:** Information text file with instructions on how to integrate the generated pattern into the final sketch. Follow these instructions and copy-paste the instructed lines where specified to be up and running in no time. 
 
 License
 ----
