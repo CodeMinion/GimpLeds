@@ -112,7 +112,7 @@ def generate_led_pattern(ledType, newimg,
 	# List of frames in the pattern. 
 	patternFrames = []
 	
-	ledFrames = extractAllLayerInformation(newimg, rowOrderType)#[]
+	ledFrames = extractAllLayerInformation(newimg, rowOrderType)
 	
 	# Build LEd Pattern
 	outLedPattern = {

@@ -52,14 +52,16 @@ The plug-in takes one image to represent a single LED pattern (or animation) and
       - **Flip Odd:** This will reverse the order of the pixels in every odd row. This means that the first pixel will map to the last LED in that section of the trip, the second pixel will map to the seconds to last LED in that section of the trip, and so on. 
       
       - **Flip Even:** This will reverse the order of the pixels in every even row. This means that the first pixel will map to the last LED in that section of the trip, the second pixel will map to the seconds to last LED in that section of the trip, and so on.
+      
+- **LED Pin:** Pin on the target board where the LEDs are connected.
 
-- **Layout: (TODO)** Specifies how the LEDs are laid out in the hardware.
+- **Layouts:** These are the supported layouts (option not present in the UI).
   - **Options:**
     - **Strip:** The LEDs are in a strip of LEDs. 
     
-    - **Single Matrix: (TODO)** The output will control an LED matrix. The actual manipulation of the information is dependent on the code generator but for now it is assumed that the matrix is in row-major order.
+    - **Single Matrix:** The output will control an LED matrix. The actual manipulation of the information is dependent on the code generator but for now it is assumed that the matrix is in row-major order.
     
-    - **Tile Matrix: (TODO)** The output will control tiled matrices. In order to support tile matrices a group layer with the prefix "TFL_" must be created where each internal layer will represent a matrix. Each layer in this group should be the size of the matrix it maps to and ideally be offset to make designing the pattern easier but not required. The connection order of the tile matrices will be derived from the order in which the sublayers are present in the group. Where the top most layer represents the first tile, the second top most represents the second tile in the connection and so on. Since the sublayers are used for the tile information each tile is not required to be the same size.  
+    - **Tile Matrix:** The output will control tiled matrices. In order to support tile matrices a group layer with the prefix "TFL_" must be created where each internal layer will represent a matrix. Each layer in this group should be the size of the matrix it maps to and ideally be offset to make designing the pattern easier but not required. The connection order of the tile matrices will be derived from the order in which the sublayers are present in the group. Where the top most layer represents the first tile, the second top most represents the second tile in the connection and so on. Since the sublayers are used for the tile information each tile is not required to be the same size.  
 
 - **Directory:** The destination directory where the code will be generated to. Ideally this should be the folder where your sketch (or project) lives to make integration simple. 
  
