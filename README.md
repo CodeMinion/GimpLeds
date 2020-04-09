@@ -1,6 +1,8 @@
 # Gimp LED Generator Plug-in
 Plug-in to create code to drive LEDs from an image file in Gimp. 
 
+### Memory Note: 
+In the case of Arduino, the generated code stores the patterns in flash memory using PROGMEM. This means that all the SRAM will still be available for the rest of the sketch to use.   
 
 ## How does it work?
 The plug-in takes one image to represent a single LED pattern (or animation) and each layer to be a step (or keyframe) in the LED pattern. To do this it uses the following Gimp elements:
@@ -57,7 +59,7 @@ The plug-in takes one image to represent a single LED pattern (or animation) and
     
     - **Single Matrix: (TODO)** The output will control an LED matrix. The actual manipulation of the information is dependent on the code generator but for now it is assumed that the matrix is in row-major order.
     
-    - **Tile Matrix: (TODO)** The output will control tiled matrices. In this mode each layer is taken as a representation of a single tile (matrix) in the tileset with the ordering of the layers being used as the connection order of the tileset. Each matrix tile is assumed to be in row-major order. 
+    - **Tile Matrix: (TODO)** The output will control tiled matrices. In order to support tile matrices a group layer with the prefix "TFL_" must be created where each internal layer will represent a matrix. Each layer in this group should be the size of the matrix it maps to and ideally be offset to make designing the pattern easier but not required. The connection order of the tile matrices will be derived from the order in which the sublayers are present in the group. Where the top most layer represents the first tile, the second top most represents the second tile in the connection and so on. Since the sublayers are used for the tile information each tile is not required to be the same size.  
 
 - **Directory:** The destination directory where the code will be generated to. Ideally this should be the folder where your sketch (or project) lives to make integration simple. 
  
@@ -75,6 +77,7 @@ License
 ----
 
 **Gimp LED Generator Plug-in** is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. **Gimp LED Generator Plug-in** is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [GNU Lesser General Public License](https://www.gnu.org/licenses/lgpl-3.0.en.html) for more details. You should have received a copy of the GNU Lesser General Public License along with **Gimp LED Generator Plug-in**. If not, see [this](https://www.gnu.org/licenses/lgpl-3.0.en.html)
+
 
 
 

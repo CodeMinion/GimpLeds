@@ -1,9 +1,97 @@
 #!/usr/bin/env python
 
-
 import os
 from gimpfu import *
 import time
+
+
+''' 
+LED Layout Options 
+'''	
+LAYOUT_CHOICE_STRIP = 0
+LAYOUT_CHOICE_SINGLE_MATRIX = 1
+LAYOUT_CHOICE_TILED_MATRIX = 2
+
+'''
+Row Processing Options
+'''
+# No change, continue default row-major order.
+ROW_PROCESSING_STANDARD = 0
+# Reverse pixel Order for odd rows.
+ROW_PROCESSING_ODD = 1 
+# Reverse pixel order for even rows.
+ROW_PROCESSING_EVEN = 2 	
+
+'''
+Layer/Image Prefixes 
+'''
+# Prefix used to mark a given layer group as 
+# a single frame in the pattern/animation. 
+# This means that all the pixes in every 
+# layer inside this group will be treated 
+# as part of the same frame and will 
+# show up in the LEDs as a single 
+# pattern/animation frame.
+PREFIX_LAYER_GROUP_TILE = "TLF_"
+
+'''
+Code Generation Choices
+'''
+CHOICE_ADAFRUIT_NEOPIXEL_ARDUINO = 0
+CHOICE_RESERVED = 1
+	
+'''
+ Intermediate generation section
+'''
+# ID of the Entire Pattern.
+KEY_PATTERN_ID = "patternId"
+# List of frames in the pattern. 
+KEY_PATTERN_FRAMES = "patternFrames"
+# Delay in milliseconds of the LED pattern. 
+# This will be the duration a given frame is displayed for.
+KEY_PATTERN_DELAY = "delay"
+# Width of the entire pattern, this is the canvas/image height in GIMP
+KEY_PATTERN_WIDTH = "width"
+# Height of the entire pattern, this is the canvas/image height in GIMP
+KEY_PATTERN_HEIGHT = "height"
+# Pin where the LED strip or Matrix is connected to the board. 
+LEY_PATTERN_LED_PIN = "ledPin"
+# Total number of LEDs. Total = Width*Height
+KEY_PATTERN_TOTAL_LEDS = "totalLeds"
+# Specify the LED layout of this pattern. Types: LED Strip, LED Single Matrix, LED Tiled Matrix
+KEY_PATTERN_LAYOUT = "patternLayout"
+# ID of the frame. Used mostly internally. 
+KEY_FRAME_ID = "frameId"
+# Color of each individual LED/Pixel during this frame. 
+# Note: Each pixel in the image maps to an LED.
+# Pixels are laid out as a linear sequence
+# of width*height pixels, extracted from the image in row-major,
+# top-to-bottom, left-to-right order (the same as the reading direction
+# of multi-line English text)
+KEY_FRAME_PIXEL_COLORS = "pixels"
+# Number of pixels wide of the panel. (Layers can have sizes different from the image itself)
+KEY_FRAME_WIDTH = "width"
+# Number of pixels height of the panel. 
+KEY_FRAME_HEIGHT = "height"
+# Total number of pixels/LEDs in the frame
+KEY_FRAME_TOTAL_LEDS = "totalLeds"
+# Color keys, stored in a range between 0-255
+KEY_COLOR_RED = "R"
+KEY_COLOR_GREEN = "G"
+KEY_COLOR_BLUE = "B"
+KEY_COLOR_ALPHA = "A"
+
+KEY_LAYER_WITDH = "width"
+KEY_LAYER_HEIGHT = "height"
+KEY_LAYER_PIXELS = "pixels"
+KEY_LAYER_OPACITY = "opacity" 
+
+
+# Types of LAYOUTS
+LAYOUT_STRIP = "led_strip"
+LAYOUT_SINGLE_MATRIX = "led_single_matrix"
+LAYOUT_TILED_MATRIX = "led_tiled_matrix"
+
 
 '''
 Generates LED code from the pixel information in an image. 
@@ -14,7 +102,7 @@ Generates LED code from the pixel information in an image.
 @param ledLayout - Layout of the LED (Strip, Single Matrix, Tiled Matrix)
 '''
 def generate_led_pattern(ledType, newimg, 
-               frameDelay, rowOrderType, ledLayout, dir):
+               frameDelay, rowOrderType, ledPin, dir):
     
 	# TODO Consider allowing user to specify pattern name instead of using the file name.
 	filename, file_extension = os.path.splitext(newimg.name)
@@ -24,81 +112,8 @@ def generate_led_pattern(ledType, newimg,
 	# List of frames in the pattern. 
 	patternFrames = []
 	
-	ledFrames = []
-	# Get layers in the newimg
-	imageLayers = flatternGroups(newimg)
-	layerIndex = 0
-	for layer in imageLayers:
-		
-		# Skip the layers that are hidden / not visible
-		if not pdb.gimp_drawable_get_visible(layer):
-			continue
-		
-		# convert the layer name to a const name 
-		constLayer = nameToConst(layer.name)
-		
-		# Track the pattern name
-		patternFrames.append(constLayer)
-		
-		lastLed = (layer.height * layer.width) - 1 
-		ledIndex = 0
-		
-		# Tuple with of (x,y)
-		layerOffsets = layer.offsets
-		
-		layerWidth = layer.width
-		layerHeight = layer.height
-		pixelColors = []
-		# Get the pixels in the layer
-		for y in range(0, layerHeight):
-			rowPixels = [] 
-			for x in range(0, layerWidth):
-				num_channels, pixel = pdb.gimp_drawable_get_pixel(layer, x, y)
-				
-				ledAlpha = int(255 * layer.opacity)
-				# If it has 4 channels then we have alpha in the end. 
-				if num_channels == 4:
-					ledAlpha = int(pixel[3]* layer.opacity)
-				
-				pixelColor = {
-					KEY_COLOR_RED: pixel[0], 
-					KEY_COLOR_GREEN: pixel[1], 
-					KEY_COLOR_BLUE: pixel[2], 
-					KEY_COLOR_ALPHA: ledAlpha
-					}
-		
-				# Track LED
-				rowPixels.append(pixelColor)
-		
-			# Perform any processing needed on the pixel row.
-			# Process pixel colors here after the row is processed because the ordering works on a row level. 
-			rowPixels = processPixelRow(rowPixels, rowOrderType, y)
-			pixelColors.extend(rowPixels)
-		
-		# TODO Track layer offsets. 	
-		# Track pattern.
-		ledFrame = {
-			KEY_FRAME_ID: constLayer,
-			KEY_FRAME_PIXEL_COLORS: pixelColors,
-			KEY_FRAME_WIDTH: layerWidth,
-			KEY_FRAME_HEIGHT: layerHeight,
-			KEY_FRAME_TOTAL_LEDS: (layerWidth*layerHeight)
-		}
-		ledFrames.append(ledFrame)
+	ledFrames = extractAllLayerInformation(newimg, rowOrderType)#[]
 	
-	
-	#Layers are listed from the top most down, for the frames we want to start at the bottom.
-	#ledFrames.reverse() 
-	
-	# Get the layout type
-	layoutTypeTag = LAYOUT_STRIP
-	
-	if ledLayout == LAYOUT_CHOICE_SINGLE_MATRIX:
-		layoutTypeTag = LAYOUT_SINGLE_MATRIX
-	elif ledLayout == LAYOUT_CHOICE_TILED_MATRIX:
-		layoutTypeTag = LAYOUT_TILED_MATRIX
-	
-
 	# Build LEd Pattern
 	outLedPattern = {
 		KEY_PATTERN_ID: constPattern,
@@ -106,8 +121,8 @@ def generate_led_pattern(ledType, newimg,
 		KEY_PATTERN_FRAMES: ledFrames,
 		KEY_PATTERN_WIDTH: newimg.width,
 		KEY_PATTERN_HEIGHT: newimg.height,
-		KEY_PATTERN_TOTAL_LEDS: (newimg.width*newimg.height),
-		KEY_PATTERN_LAYOUT: layoutTypeTag
+		LEY_PATTERN_LED_PIN: ledPin, 
+		KEY_PATTERN_TOTAL_LEDS: (newimg.width*newimg.height)
 	}
 	
 	pdb.gimp_progress_pulse()
@@ -148,6 +163,127 @@ def flatternGroups(parent):
 	
 	return outLayers
 
+
+# Given a layer it will flatten all sublayers into a single 
+# frame. The result will be a list of intermediate representation of the 
+# pixels in the layer. 
+def flattenFrame(frame, outPixels):
+	
+	# Ignore layers whose visibility flag is off. 
+	# Groups will mark all internal layers to invisible when 
+	# the group is invisible so don't need to explore further. 
+	if not pdb.gimp_drawable_get_visible(frame):
+		return
+		
+	if not pdb.gimp_item_is_group(frame):
+		# Order type not supported for flattening a layer. 
+		layerPixels = extractLayerPixelInformation(frame)
+		outPixels.extend(layerPixels)
+		return
+	else: 
+		# Flatten all layers
+		layers = frame.layers
+		for innerLayer in layers:
+			flattenFrame(innerLayer, outPixels) 
+		return
+					
+	pass
+
+def extractLayerPixelInformation(layer, rowOrderType=ROW_PROCESSING_STANDARD):
+	outPixels = []
+	# Just get all the pixesl in it. 
+	for y in range(0, layer.height):
+		rowPixels = [] 
+		for x in range(0, layer.width):
+			num_channels, pixel = pdb.gimp_drawable_get_pixel(layer, x, y)
+			
+			ledAlpha = int(255 * layer.opacity)
+			# If it has 4 channels then we have alpha in the end. 
+			if num_channels == 4:
+				ledAlpha = int(pixel[3]* layer.opacity)
+			
+			pixelColor = {
+				KEY_COLOR_RED: pixel[0], 
+				KEY_COLOR_GREEN: pixel[1], 
+				KEY_COLOR_BLUE: pixel[2], 
+				KEY_COLOR_ALPHA: ledAlpha
+				}
+			
+			# Track LED
+			rowPixels.append(pixelColor)
+	
+		# TODO Add row processing back here. 
+		# Perform any processing needed on the pixel row.
+		# Process pixel colors here after the row is processed because the ordering works on a row level. 
+		rowPixels = processPixelRow(rowPixels, rowOrderType, y)
+		outPixels.extend(rowPixels)
+	
+	return outPixels
+
+def extractAllLayerInformation(parent, rowOrderType):
+	
+	outLayers = []	
+	layers = parent.layers
+	
+	for layer in layers:
+		# Skip hidden layers. 
+		if not pdb.gimp_drawable_get_visible(layer):
+			continue
+		
+		# convert the layer name to a const name 
+		constLayer = nameToConst(layer.name)
+		
+		layerWidth = layer.width
+		layerHeight = layer.height
+		
+		pixelColors = []
+				
+		if  pdb.gimp_item_is_group(layer):
+			# If it is a special tiled group then flatten it. 
+			if isLayerTiled(constLayer):
+				flattenFrame(layer, pixelColors)
+				ledFrame = {
+					KEY_FRAME_ID: constLayer,
+					KEY_FRAME_PIXEL_COLORS: pixelColors,
+					KEY_FRAME_WIDTH: layerWidth,
+					KEY_FRAME_HEIGHT: layerHeight,
+					KEY_FRAME_TOTAL_LEDS: len(pixelColors)#(layerWidth*layerHeight)
+				}
+				outLayers.append(ledFrame)
+				pass
+			else: 
+				# Extract all the layers from a group. 
+				outLayers.extend( extractAllLayerInformation(layer, rowOrderType))
+				pass
+		else:
+			# Extract pixel information for regular layers
+			pixelColors.extend(extractLayerPixelInformation(layer, rowOrderType))
+			ledFrame = {
+				KEY_FRAME_ID: constLayer,
+				KEY_FRAME_PIXEL_COLORS: pixelColors,
+				KEY_FRAME_WIDTH: layerWidth,
+				KEY_FRAME_HEIGHT: layerHeight,
+				KEY_FRAME_TOTAL_LEDS: len(pixelColors)#(layerWidth*layerHeight)
+			}
+			outLayers.append(ledFrame)
+		
+	return outLayers
+	pass
+
+# Checks if a layer is tiled. 
+# A tiled layer will have all its 
+# sublayers merged into a single frame. 
+def isLayerTiled(layerId):
+	#raise NameError(layerId[:3])
+	isTiled = True
+	if len(layerId) < len(PREFIX_LAYER_GROUP_TILE):
+		isTiled = False
+	elif layerId[:4] != PREFIX_LAYER_GROUP_TILE:
+		isTiled = False
+		
+	return isTiled
+
+	
 # Processing to support form common LED layouts.
 # Standard - Default, row-major. No changes needed.
 # Flip Odd - Reverses the pixels in the odd rows.
@@ -166,71 +302,7 @@ def processPixelRow(pixelList, rowOrder, rowPosition):
 		
 	return outPixelList	
 	
-''' 
-LED Layout Options 
-'''	
-LAYOUT_CHOICE_STRIP = 0
-LAYOUT_CHOICE_SINGLE_MATRIX = 1
-LAYOUT_CHOICE_TILED_MATRIX = 2
 
-'''
-Row Processing Options
-'''
-# No change, continue default row-major order.
-ROW_PROCESSING_STANDARD = 0
-# Reverse pixel Order for odd rows.
-ROW_PROCESSING_ODD = 1 
-# Reverse pixel order for even rows.
-ROW_PROCESSING_EVEN = 2 	
-'''
-Code Generation Choices
-'''
-CHOICE_ADAFRUIT_NEOPIXEL_ARDUINO = 0
-CHOICE_RESERVED = 1
-	
-'''
- Intermediate generation section
-'''
-# ID of the Entire Pattern.
-KEY_PATTERN_ID = "patternId"
-# List of frames in the pattern. 
-KEY_PATTERN_FRAMES = "patternFrames"
-# Delay in milliseconds of the LED pattern. 
-# This will be the duration a given frame is displayed for.
-KEY_PATTERN_DELAY = "delay"
-# Width of the entire pattern, this is the canvas/image height in GIMP
-KEY_PATTERN_WIDTH = "width"
-# Height of the entire pattern, this is the canvas/image height in GIMP
-KEY_PATTERN_HEIGHT = "height"
-# Total number of LEDs. Total = Width*Height
-KEY_PATTERN_TOTAL_LEDS = "totalLeds"
-# Specify the LED layout of this pattern. Types: LED Strip, LED Single Matrix, LED Tiled Matrix
-KEY_PATTERN_LAYOUT = "patternLayout"
-# ID of the frame. Used mostly internally. 
-KEY_FRAME_ID = "frameId"
-# Color of each individual LED/Pixel during this frame. 
-# Note: Each pixel in the image maps to an LED.
-# Pixels are laid out as a linear sequence
-# of width*height pixels, extracted from the image in row-major,
-# top-to-bottom, left-to-right order (the same as the reading direction
-# of multi-line English text)
-KEY_FRAME_PIXEL_COLORS = "pixels"
-# Number of pixels wide of the panel. (Layers can have sizes different from the image itself)
-KEY_FRAME_WIDTH = "width"
-# Number of pixels height of the panel. 
-KEY_FRAME_HEIGHT = "height"
-# Total number of pixels/LEDs in the frame
-KEY_FRAME_TOTAL_LEDS = "totalLeds"
-# Color keys, stored in a range between 0-255
-KEY_COLOR_RED = "R"
-KEY_COLOR_GREEN = "G"
-KEY_COLOR_BLUE = "B"
-KEY_COLOR_ALPHA = "A"
-
-# Types of LAYOUTS
-LAYOUT_STRIP = "led_strip"
-LAYOUT_SINGLE_MATRIX = "led_single_matrix"
-LAYOUT_TILED_MATRIX = "led_tiled_matrix"
 
 '''
 ----------------- END of JSON Intermediate generation section -----
@@ -333,16 +405,7 @@ class AdafruitNeoPixelStripCodeGenerator:
 			self.mOutFile.write("	{0},\n".format(frame[KEY_FRAME_TOTAL_LEDS]))
 		pass
 		self.mOutFile.write("	};\n")
-		
-		# TODO Generate offset for the layouts that need it. 
-		if self.isLayoutTiledMatrix():
-			self.writePatternFrameOffsetConst(patternId, self.mOutFile)
-			for offset in frameOffsets:
-				self.mOutFile.write("	{0},\n".format(offset))
-			pass
-			self.mOutFile.write("	};\n")
 				
-		
 		# End namespace declarations
 		self.writeNamespaceEnd(patternId, self.mOutFile)
 		
@@ -361,8 +424,9 @@ class AdafruitNeoPixelStripCodeGenerator:
 		# Write Base Pattern class 
 		self.writeBaseLedPatternClass()
 		
-		# TODO Generate ReadMe file with simple instructions on how to include in existing script.
-		self.generateReadMe(patternId)
+		# Generate ReadMe file with simple instructions on how to include in existing script.
+		# TODO Pass led pin and led count here. 
+		self.generateReadMe(patternId, 7, patternLEDsTotal)
 		pass
 
 	# Dims a color by a given ratio. Because we are creating LED 
@@ -387,9 +451,6 @@ class AdafruitNeoPixelStripCodeGenerator:
 	# Generates the ID that will be used for the offsets constant. 
 	def getFrameOffsetConstId(self, patternId):
 		return "{0}_OFFSETS".format(patternId)
-	
-	def isLayoutTiledMatrix(self):
-		return self.mLedPattern[KEY_PATTERN_LAYOUT] == LAYOUT_TILED_MATRIX
 		
 	def toCamelCase(self, text):
 		text = text.title()
@@ -569,21 +630,26 @@ class {4} : public GimpLedPattern
 		)
 	
 	# Generates a ReadMe file for ease of integration into an existing sketch. 
-	def generateReadMe(self, patternId):
+	def generateReadMe(self, patternId, ledPin, totalLeds):
 		outFilename = os.path.join(self.mOutDir, 'ReadMe_{0}.txt'.format(self.getGeneratedLedPatternClassName(patternId)))
 		readMeFile = open(outFilename, "w")
+		# TODO Add generation of Adafruit NeoPixel Strip initialization as well so it properly loads the number of pixels for the pattern.
 		readMeFile.write("""
 
 // Note: These steps assume you used the sketch directory as the destination directory when creating the pattern. 
 // If you selected a different directory then simply copy the generated files over and into the sketch directory. 
 
 // 1 - Include at the top of Arduino sketch under your other #include statements.
+#include <Adafruit_NeoPixel.h>
 #include "{0}.h"
 
-// 2 - Paste on top of setup() and under Adafruit NeoPixel declaration.
+// 2 - Paste on top of setup().
 // Note: This assumes you named your pixel strip 'strip' as in the Adafruit sample
 // from: https://learn.adafruit.com/adafruit-neopixel-uberguide?view=all#arduino-library-installation
 // If you named it differently used that name here instead of 'strip'
+#define LED_PIN    {3}
+#define LED_COUNT {4}
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 {1} * {2} = new {0}(strip);
 
 // 3 - Paste inside loop() to run the pattern.
@@ -592,9 +658,56 @@ class {4} : public GimpLedPattern
 // 4 - Optional: Use this to stop the pattern while it is in the middle of running.
 //{2}->stopPattern();
 
+
+/////////////////////////////////////////////////////////////////////
+//// Optionally if you are just starting out with a clean sketch you 
+//// may just copy this entire section below and replace the content 
+//// of the sketch with it.  
+////////////////////////////////////////////////////////////////////
+#include <Adafruit_NeoPixel.h>
+// 1 - Include at the top of Arduino sketch under your other #include statements.
+#include "{0}.h"
+
+#define LED_PIN    {3}
+#define LED_COUNT {4}
+
+
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+// 2 - Paste on top of setup() and under Adafruit NeoPixel declaration.
+// Note: This assumes you named your pixel strip 'strip' as in the Adafruit sample
+// from: https://learn.adafruit.com/adafruit-neopixel-uberguide?view=all#arduino-library-installation
+// If you named it differently used that name here instead of 'strip'
+{1} * {2} = new {0}(strip);
+
+void setup() {{
+  // put your setup code here, to run once:
+  // Setup Neopixels
+  // Reduce brigthness 0-255
+  strip.setBrightness(4);
+  strip.begin();
+  strip.show(); // Initialize all pixels to 'off'
+}}
+
+void loop() {{
+  // put your main code here, to run repeatedly:
+
+  // 3 - Paste inside loop() to run the pattern.
+  {2}->playPattern();  
+
+  // 4 - Optional: Use this to stop the pattern while it is in the middle of running.
+  //{2}->stopPattern();
+}}
+
+////// END OF SKETCH 
+
+
+
 		""".format(self.getGeneratedLedPatternClassName(patternId),
 		self.getBasePatternClassName(),
-		self.getGeneratedLedPatternClassName(patternId).lower()))
+		self.getGeneratedLedPatternClassName(patternId).lower(),
+		ledPin,  
+		totalLeds
+		))
 		readMeFile.close()
 		pass
 		
@@ -637,7 +750,7 @@ Directory: Directory where the code will be placed once generation is complete. 
         (PF_IMAGE, "image", "Input image", None),
         (PF_SPINNER, "frameDelay", "Frame Delay (ms)", 200, (1, 80000, 1)),
 		(PF_OPTION, "rowOrderType", "Row Ordering", 0, ("Standard", "Flip Odd", "Flip Even")),
-        (PF_OPTION, "ledLayout", "Layout (TODO)", 0, ("Strip", "Single Matrix", "Tiled Matrix")),
+        (PF_SPINNER, "ledPin", "LED Pin", 6, (1, 80000, 1)),
 		(PF_DIRNAME, "dir", "Directory", os.getcwd())
 
 		# Python-Fu Type, paramter-name, ui-text, default
