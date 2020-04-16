@@ -4,7 +4,7 @@
 #include <Adafruit_NeoPixel.h>
 #include "GimpLedPattern.h"
 
-#define MATRIX_8X8_EXAMPLE_DELAY 200
+#define MATRIX_8X8_EXAMPLE_DELAY 300
 
 #define MATRIX_8X8_EXAMPLE_TOTAL_LEDS 64
 

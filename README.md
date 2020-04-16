@@ -32,7 +32,7 @@ The plug-in takes one image to represent a single LED pattern (or animation) and
  
  - **Copy Plug-in:** Navigate to the plug-ins folder under your user directory and paste the **.py** file included in this repo there.
  
- - **Restart Gimp:** For plug-in changes to be picked up by Gimp you must restart Gimp, so if you have Gimp running when you paste this plugin in that directory then just restart. The next time Gimp starts this plugin will appear under **File**->**Create**-> **Generate LED Pattern...**
+ - **Restart Gimp:** For plug-in changes to be picked up by Gimp you must restart Gimp, so if you have Gimp running when you paste this plug-in in that directory then just restart. The next time Gimp starts this plug-in will appear under **File**->**Create**-> **Generate LED Pattern...**
 
 ## Plug-in Fields
 **Note:** This Gimp LED Generator plugin requires that at least one image is active. If accessing the plug-in without an active image, the plug-in option will just appear grayed out until an image is loaded or created. 

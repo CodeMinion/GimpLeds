@@ -334,6 +334,7 @@ class AdafruitNeoPixelStripCodeGenerator:
 	def generate(self):
 		# Write Header 
 		patternId = self.mLedPattern[KEY_PATTERN_ID]
+		self.generatePluginHeaderInfo(self.mOutFile)
 		self.writeHeaders(patternId, self.mOutFile)
 		
 		# Include delay
@@ -545,6 +546,7 @@ void play_{3}(Adafruit_NeoPixel strip)
 	def writeBaseLedPatternClass(self):
 		outFilename = os.path.join(self.mOutDir, '{0}.h'.format(self.getBasePatternClassName()))
 		baseClassFile = open(outFilename, "w")
+		self.generatePluginHeaderInfo(baseClassFile)
 		baseClassFile.write(
 		"""#ifndef GIMP_LED_PATTERN_H
 #define GIMP_LED_PATTERN_H
@@ -629,6 +631,18 @@ class {4} : public GimpLedPattern
 		self.getGeneratedLedPatternClassName(patternId))
 		)
 	
+	# Generate Header Plugin Info
+	def generatePluginHeaderInfo(self, outFile):
+		outFile.write(
+'''
+/****
+ * Pattern file Generated from a Gimp Image file using the Gimp LEDs plug-in.
+ * Gimp LEDs Plug-in Download: https://bit.ly/GimpLeds
+ * Gimp Download: https://www.gimp.org
+ ****/ 
+ 
+''')
+		pass
 	# Generates a ReadMe file for ease of integration into an existing sketch. 
 	def generateReadMe(self, patternId, ledPin, totalLeds):
 		outFilename = os.path.join(self.mOutDir, 'ReadMe_{0}.txt'.format(self.getGeneratedLedPatternClassName(patternId)))
