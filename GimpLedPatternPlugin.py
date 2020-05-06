@@ -167,7 +167,7 @@ def flatternGroups(parent):
 # Given a layer it will flatten all sublayers into a single 
 # frame. The result will be a list of intermediate representation of the 
 # pixels in the layer. 
-def flattenFrame(frame, outPixels):
+def flattenFrame(frame, outPixels, parentOpacity = 1.0):
 	
 	# Ignore layers whose visibility flag is off. 
 	# Groups will mark all internal layers to invisible when 
@@ -177,30 +177,31 @@ def flattenFrame(frame, outPixels):
 		
 	if not pdb.gimp_item_is_group(frame):
 		# Order type not supported for flattening a layer. 
-		layerPixels = extractLayerPixelInformation(frame)
+		layerPixels = extractLayerPixelInformation(frame, ROW_PROCESSING_STANDARD, parentOpacity)
 		outPixels.extend(layerPixels)
 		return
 	else: 
 		# Flatten all layers
 		layers = frame.layers
 		for innerLayer in layers:
-			flattenFrame(innerLayer, outPixels) 
+			flattenFrame(innerLayer, outPixels, frame.opacity) 
 		return
 					
 	pass
 
-def extractLayerPixelInformation(layer, rowOrderType=ROW_PROCESSING_STANDARD):
+def extractLayerPixelInformation(layer, rowOrderType=ROW_PROCESSING_STANDARD, parentOpacity = 100.0):
 	outPixels = []
-	# Just get all the pixesl in it. 
+	# Just get all the pixels in it. 
 	for y in range(0, layer.height):
 		rowPixels = [] 
 		for x in range(0, layer.width):
 			num_channels, pixel = pdb.gimp_drawable_get_pixel(layer, x, y)
 			
-			ledAlpha = int(255 * layer.opacity)
+			# Note: Opacity is a value between 0-100.
+			ledAlpha = int(255 * layer.opacity/100.0 * parentOpacity/100.0 )
 			# If it has 4 channels then we have alpha in the end. 
 			if num_channels == 4:
-				ledAlpha = int(pixel[3]* layer.opacity)
+				ledAlpha = int(pixel[3] * layer.opacity/100.0 * parentOpacity/100.0)
 			
 			pixelColor = {
 				KEY_COLOR_RED: pixel[0], 
@@ -253,7 +254,7 @@ def extractAllLayerInformation(parent, rowOrderType):
 				pass
 			else: 
 				# Extract all the layers from a group. 
-				outLayers.extend( extractAllLayerInformation(layer, rowOrderType))
+				outLayers.extend(extractAllLayerInformation(layer, rowOrderType))
 				pass
 		else:
 			# Extract pixel information for regular layers
@@ -366,7 +367,7 @@ class AdafruitNeoPixelStripCodeGenerator:
 			lastPixel = len(pixelColors) - 1
 			for color in pixelColors:
 				# LEDs don't have alpha so we just reduce the color by the alpha ratio.
-				colorRatio = (color[KEY_COLOR_ALPHA]/255.0) / 100.0
+				colorRatio = (color[KEY_COLOR_ALPHA]/255.0)
 				
 				R = "%02x" %self.dimColorByRatio(color[KEY_COLOR_RED], colorRatio)
 				G = "%02x" %self.dimColorByRatio(color[KEY_COLOR_GREEN], colorRatio)
